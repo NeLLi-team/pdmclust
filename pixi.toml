@@ -1,0 +1,37 @@
+[project]
+name = "phylodm-clustering"
+version = "0.1.0"
+description = "Phylogenetic Distance Matrix Clustering Pipeline"
+channels = ["conda-forge", "bioconda"]
+platforms = ["linux-64"]
+
+[dependencies]
+python = "3.10.*"
+pandas = "*"
+numpy = "*"
+dendropy = "*"
+phylodm = "*"
+mcl = "*"
+pip = "*"
+
+[tasks]
+# Install additional dependencies that might not be available in conda
+install-deps = "pip install dendropy phylodm"
+
+# Run the clustering pipeline with default parameters
+run = "python phylodm_clustering.py --input_dir {args}"
+
+# Run the clustering pipeline with taxonomy-based clustering
+run-with-taxonomy = "python phylodm_clustering.py --input_dir {args} --tax_level 2"
+
+# Run the clustering pipeline with custom cutoffs
+run-custom-cutoffs = "python phylodm_clustering.py --input_dir {args} --cutoffs {args}"
+
+# Run tests
+test = "pytest"
+
+# Format code
+format = "black *.py"
+
+# Lint code
+lint = "flake8 *.py"
