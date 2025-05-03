@@ -28,7 +28,6 @@ pixi.lock
 *.sif
 *.img
 *.simg
-*.def
 cache/
 tmp/
 build/

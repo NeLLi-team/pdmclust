@@ -1,0 +1,53 @@
+Bootstrap: docker
+From: ghcr.io/prefix-dev/pixi:0.41.4
+
+%files
+    phylodm_clustering.py /app/
+    pixi.toml /app/
+
+%post
+    # Set up the working directory
+    cd /app
+
+    # Install dependencies (without --locked flag to generate the lock file)
+    pixi install
+
+    # Create the shell-hook bash script to activate the environment
+    pixi shell-hook -s bash > /shell-hook
+
+    # Create entrypoint script
+    cat > /app/entrypoint.sh << 'EOF'
+#!/bin/bash
+source /shell-hook
+exec "$@"
+EOF
+
+    chmod +x /app/entrypoint.sh
+
+    # Create a wrapper script for the clustering pipeline
+    cat > /usr/local/bin/run_phylodm_clustering.sh << 'EOF'
+#!/bin/bash
+source /shell-hook
+cd /app
+python /app/phylodm_clustering.py "$@"
+EOF
+
+    chmod +x /usr/local/bin/run_phylodm_clustering.sh
+
+%environment
+    export LC_ALL=C
+
+%runscript
+    # Simple runscript that passes all arguments to the entrypoint
+    exec /app/entrypoint.sh /usr/local/bin/run_phylodm_clustering.sh "$@"
+
+%help
+    PhyloDM Clustering Pipeline
+
+    This container provides a pipeline for clustering sequences based on phylogenetic distances,
+    with optional taxonomy-based consistency checks.
+
+    Usage:
+        apptainer run phylodm-clustering.sif --input_dir /path/to/input --output_dir /path/to/output
+
+    For more information, see the README.md file in the GitHub repository.
