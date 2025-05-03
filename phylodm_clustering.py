@@ -115,6 +115,22 @@ def is_taxonomy_consistent(cluster, taxonomy_dict, tax_level):
     return len(tax_values) <= 1
 
 
+def read_alignment_seqs(alignment_file):
+    """Read alignment file and return a list of sequence IDs."""
+    alignment_seqs = []
+    try:
+        with open(alignment_file, 'r') as f:
+            for line in f:
+                line = line.strip()
+                if line.startswith(">"):
+                    seq_id = line[1:].split()[0]  # Remove ">" and get first field
+                    alignment_seqs.append(seq_id)
+        return alignment_seqs
+    except Exception as e:
+        print(f"Error reading alignment file {alignment_file}: {e}")
+        return []
+
+
 def process_mcl_add_singletons(cluster_file, alignment_file, output_file, taxonomy_dict=None, tax_level=0):
     """Process MCL output, add singletons, and ensure taxonomy consistency if requested."""
     def read_cluster_file(file_path):
@@ -124,18 +140,8 @@ def process_mcl_add_singletons(cluster_file, alignment_file, output_file, taxono
                 clusters.append(line.strip().split('\t'))
         return clusters
 
-    def read_alignment_file(file_path):
-        alignment = []
-        with open(file_path, 'r') as file:
-            for line in file:
-                line = line.strip()
-                if line.startswith(">"):
-                    genome_id = line[1:].split()[0]  # Remove ">" and get first field
-                    alignment.append(genome_id)
-        return alignment
-
     clusters = read_cluster_file(cluster_file)
-    alignment = read_alignment_file(alignment_file)
+    alignment = read_alignment_seqs(alignment_file)
 
     # If taxonomy information is provided, split clusters that are not consistent
     if taxonomy_dict and tax_level > 0:
@@ -229,13 +235,51 @@ def process_clusters_sortby_counts(count_file, id_file, output_file):
             f.write('\t'.join(reordered_id_list) + '\n')
 
 
-def generate_cluster_stats(cluster_dir, output_basename):
+def calculate_taxonomy_consistency(clusters, taxonomy_dict, tax_level):
+    """Calculate how many clusters are consistent at the specified taxonomy level.
+
+    Args:
+        clusters: List of clusters, where each cluster is a list of sequence IDs
+        taxonomy_dict: Dictionary mapping sequence IDs to taxonomy strings
+        tax_level: Taxonomy level to check (1=species, 2=genus, etc.)
+
+    Returns:
+        int: Number of consistent clusters
+    """
+    if not taxonomy_dict or tax_level <= 0:
+        return len(clusters)  # All clusters are consistent if no taxonomy info
+
+    consistent_count = 0
+    for cluster in clusters:
+        if is_taxonomy_consistent(cluster, taxonomy_dict, tax_level):
+            consistent_count += 1
+
+    return consistent_count
+
+
+def generate_cluster_stats(cluster_dir, output_basename, taxonomy_dict=None):
     """Generate statistics about the clustering results.
+
+    Args:
+        cluster_dir: Directory containing cluster files
+        output_basename: Base name for output files
+        taxonomy_dict: Dictionary mapping sequence IDs to taxonomy strings
 
     Returns:
         pd.DataFrame: DataFrame containing the statistics, or None if no clusters were found.
     """
-    stats = {'cutoff': [], 'num_clusters': [], 'num_singletons': [], 'avg_size': [], 'largest_cluster': []}
+    stats = {
+        'cutoff': [],
+        'num_clusters': [],
+        'num_singletons': [],
+        'avg_size': [],
+        'largest_cluster': [],
+        'clustcons_genus': [],
+        'clustcons_family': [],
+        'clustcons_order': [],
+        'clustcons_class': [],
+        'clustcons_phylum': []
+    }
 
     found_clusters = False
     for cluster_file in os.listdir(cluster_dir):
@@ -251,6 +295,28 @@ def generate_cluster_stats(cluster_dir, output_basename):
                     num_singletons = sum(len(cluster) == 1 for cluster in clusters)
                     avg_size = np.mean([len(cluster) for cluster in clusters])
                     largest_cluster = max(len(cluster) for cluster in clusters)
+
+                    # Calculate taxonomy consistency at different levels
+                    if taxonomy_dict and len(taxonomy_dict) > 0:
+                        genus_consistent = calculate_taxonomy_consistency(clusters, taxonomy_dict, 2)
+                        family_consistent = calculate_taxonomy_consistency(clusters, taxonomy_dict, 3)
+                        order_consistent = calculate_taxonomy_consistency(clusters, taxonomy_dict, 4)
+                        class_consistent = calculate_taxonomy_consistency(clusters, taxonomy_dict, 5)
+                        phylum_consistent = calculate_taxonomy_consistency(clusters, taxonomy_dict, 6)
+
+                        # Format as "consistent/total"
+                        stats['clustcons_genus'].append(f"{genus_consistent}/{num_clusters}")
+                        stats['clustcons_family'].append(f"{family_consistent}/{num_clusters}")
+                        stats['clustcons_order'].append(f"{order_consistent}/{num_clusters}")
+                        stats['clustcons_class'].append(f"{class_consistent}/{num_clusters}")
+                        stats['clustcons_phylum'].append(f"{phylum_consistent}/{num_clusters}")
+                    else:
+                        # If no taxonomy info, mark as n/a
+                        stats['clustcons_genus'].append("n/a")
+                        stats['clustcons_family'].append("n/a")
+                        stats['clustcons_order'].append("n/a")
+                        stats['clustcons_class'].append("n/a")
+                        stats['clustcons_phylum'].append("n/a")
 
                 stats['cutoff'].append(cutoff)
                 stats['num_clusters'].append(num_clusters)
@@ -314,17 +380,41 @@ def find_input_files(input_dir):
     return tree_file, alignment_file, taxonomy_file
 
 
+def parse_tax_level(value):
+    """Parse taxonomy level from string or int."""
+    if isinstance(value, int) or value.isdigit():
+        return int(value)
+
+    # Map string values to taxonomy levels
+    tax_level_map = {
+        'species': 1,
+        'genus': 2,
+        'family': 3,
+        'order': 4,
+        'class': 5,
+        'phylum': 6
+    }
+
+    value = value.lower()
+    if value in tax_level_map:
+        return tax_level_map[value]
+    else:
+        raise argparse.ArgumentTypeError(f"Invalid taxonomy level: {value}. Must be an integer (1-6) or one of: {', '.join(tax_level_map.keys())}")
+
+
 def main():
     parser = argparse.ArgumentParser(description='PhyloDM Clustering Pipeline')
-    parser.add_argument('--input_dir', type=str, required=True, help='Directory containing input files')
+    parser.add_argument('--input_dir', type=str, required=True, help='Directory containing input files (will auto-detect tree, sequence, and taxonomy files unless explicitly specified)')
     parser.add_argument('--output_dir', type=str, help='Output directory (default: input_dir_results)')
-    parser.add_argument('--tree', type=str, help='Tree file (if not specified, will look for *.tree, *.nwk, *.tre, *.treefile in input_dir)')
-    parser.add_argument('--alignment', type=str, help='Alignment file (if not specified, will look for *.aln, *.mafft, *.mafft_t, *.faa in input_dir)')
-    parser.add_argument('--taxonomy', type=str, help='Taxonomy file (if not specified, will look for *.tsv in input_dir)')
+    parser.add_argument('--tree', type=str, help='Specific tree file path (overrides auto-detection, extensions: .tree, .nwk, .tre, .treefile)')
+    parser.add_argument('--seqfile', type=str, help='Specific sequence file path (overrides auto-detection, extensions: .aln, .mafft, .mafft_t, .faa)')
+    parser.add_argument('--taxonomy', type=str, help='Specific taxonomy file path (overrides auto-detection, extension: .tsv)')
     parser.add_argument('--count', type=str, help='Count file (if not specified, will create a default count file)')
     parser.add_argument('--cutoffs', type=str, default='0.99,0.95,0.9,0.8,0.7', help='Comma-separated list of cutoff values (default: 0.99,0.95,0.9,0.8,0.7)')
-    parser.add_argument('--tax_level', type=int, default=2, help='Taxonomy level for consistency check (1=species, 2=genus, 3=family, etc., 0=disable, default: 2)')
+    parser.add_argument('--tax_level', type=parse_tax_level, default=0, help='Taxonomy level for consistency check (1=species, 2=genus, 3=family, etc., 0=disable, default: 0)')
     parser.add_argument('--extract', type=float, help='Extract cluster representatives at the specified threshold (e.g., 0.7)')
+    parser.add_argument('--extract_only', action='store_true', help='Only extract representatives without running clustering (if output already exists)')
+    parser.add_argument('--extract_tax_level', type=parse_tax_level, help='Extract cluster representatives at the highest threshold where all clusters are consistent at this taxonomy level (can be an integer 1-6 or one of: species, genus, family, order, class, phylum)')
 
     args = parser.parse_args()
 
@@ -342,9 +432,27 @@ def main():
 
     create_dir(output_dir)
 
+    # Define clusters directory path
+    clusters_dir = os.path.join(output_dir, "clusters")
+
+    # Check if we're in extract-only mode and if the extract threshold is provided
+    extract_only_mode = False
+    if args.extract is not None and args.extract_only:
+        # Check if the clusters directory exists
+        if os.path.exists(clusters_dir):
+            # Check if the cluster file for the specified threshold exists
+            cluster_file = os.path.join(clusters_dir, f"threshold_{args.extract:.2f}.txt")
+            if os.path.exists(cluster_file):
+                extract_only_mode = True
+                print(f"Extract-only mode: Using existing cluster file {cluster_file}")
+            else:
+                print(f"Warning: Cluster file {cluster_file} not found. Will run clustering first.")
+        else:
+            print(f"Warning: Clusters directory {clusters_dir} not found. Will run clustering first.")
+
     # Find input files if not specified
     tree_file = args.tree
-    alignment_file = args.alignment
+    alignment_file = args.seqfile  # Use seqfile instead of alignment
     taxonomy_file = args.taxonomy
     count_file = args.count
 
@@ -391,121 +499,310 @@ def main():
         print("Using default cutoffs: 0.99, 0.95, 0.9, 0.8, 0.7")
         cutoffs = [0.99, 0.95, 0.9, 0.8, 0.7]
 
+    # If extract_tax_level is specified, we need to run a range of thresholds
+    if args.extract_tax_level is not None:
+        if not taxonomy_file or not os.path.exists(taxonomy_file):
+            print("Error: Taxonomy file is required for --extract_tax_level")
+            sys.exit(1)
+
+        # Generate a range of thresholds from 0.9 down to 0.01
+        auto_cutoffs = []
+        for i in range(9, 0, -1):  # 9 to 1
+            auto_cutoffs.append(i / 10)  # 0.9, 0.8, ..., 0.1
+        for i in range(9, 0, -1):  # 9 to 1
+            auto_cutoffs.append(i / 100)  # 0.09, 0.08, ..., 0.01
+
+        cutoffs = auto_cutoffs
+        print(f"Running clustering with automatic thresholds for taxonomy level {args.extract_tax_level}")
+
+        # Flag to indicate we're in auto-threshold mode
+        auto_threshold_mode = True
+    # If extract is specified but not extract_tax_level, only run that threshold
+    elif args.extract is not None and not extract_only_mode:
+        # Check if the extract threshold is in the cutoffs list
+        if args.extract not in cutoffs:
+            # Add the extract threshold to the cutoffs list
+            cutoffs = [args.extract]
+            print(f"Running clustering only for the extraction threshold: {args.extract}")
+        else:
+            # If we're only interested in extraction, just run that threshold
+            cutoffs = [args.extract]
+            print(f"Running clustering only for the extraction threshold: {args.extract}")
+
     # Read taxonomy file if provided
     taxonomy_dict = {}
     if taxonomy_file and os.path.exists(taxonomy_file):
         taxonomy_dict = read_taxonomy_file(taxonomy_file)
 
-    # Run the pipeline for each cutoff
-    for cutoff in cutoffs:
-        output_basename = os.path.join(output_dir, f"threshold_{cutoff:.2f}")
+    # Read alignment file to get sequence IDs
+    alignment_seqs = read_alignment_seqs(alignment_file)
 
-        print(f"Processing cutoff {cutoff}...")
+    # Create log file with taxonomy coverage information
+    create_log_file(output_dir, tree_file, alignment_file, taxonomy_file, taxonomy_dict, alignment_seqs)
 
-        # Step 1: Run PhyloDM
-        run_phylodm_parallel(tree_file, output_basename, [cutoff])
+    # Skip clustering if in extract-only mode
+    if not extract_only_mode:
 
-        # Step 2 and 3: Process the generated .mcl file
-        clusters_dir = f"{output_basename}_clusters"
+        # Create directories for the final output
         create_dir(clusters_dir)
-        create_dir(os.path.join(clusters_dir, "temp"))
+        phylodm_out_dir = os.path.join(output_dir, "phylodm_out")
+        create_dir(phylodm_out_dir)
 
-        # Use os.path.join for proper path handling
-        phylodm_out_dir = f"{output_basename}_phylodm_out"
-        cluster_file = os.path.join(phylodm_out_dir, f"{os.path.basename(output_basename)}_{cutoff:.2f}.3c.mcl")
-        temp_output_file = os.path.join(clusters_dir, "temp", f"temp_output_clusters_{cutoff:.2f}.txt")
-        final_output_file = os.path.join(clusters_dir, f"{os.path.basename(output_basename)}_{cutoff:.2f}.txt")
+        # Run the pipeline for each cutoff
+        for cutoff in cutoffs:
+            output_basename = os.path.join(output_dir, f"threshold_{cutoff:.2f}")
 
-        # Process MCL and add singletons
-        process_mcl_add_singletons(cluster_file, alignment_file, temp_output_file, taxonomy_dict, args.tax_level)
+            print(f"Processing cutoff {cutoff}...")
 
-        # Process clusters and sort by counts
-        process_clusters_sortby_counts(count_file, temp_output_file, final_output_file)
+            # Step 1: Run PhyloDM
+            run_phylodm_parallel(tree_file, output_basename, [cutoff])
 
-    # Create directories for the final output
-    clusters_dir = os.path.join(output_dir, "clusters")
-    phylodm_out_dir = os.path.join(output_dir, "phylodm_out")
-    create_dir(clusters_dir)
-    create_dir(phylodm_out_dir)
+            # Step 2 and 3: Process the generated .mcl file
+            temp_clusters_dir = f"{output_basename}_clusters"
+            create_dir(temp_clusters_dir)
+            create_dir(os.path.join(temp_clusters_dir, "temp"))
 
-    # Copy the final cluster files to the clusters directory
-    for cutoff in cutoffs:
-        # Copy cluster files
-        src_cluster_dir = os.path.join(output_dir, f"threshold_{cutoff:.2f}_clusters")
-        if os.path.exists(src_cluster_dir):
-            # Copy the main cluster file
-            src_file = os.path.join(src_cluster_dir, f"threshold_{cutoff:.2f}_{cutoff:.2f}.txt")
+            # Use os.path.join for proper path handling
+            phylodm_out_dir = f"{output_basename}_phylodm_out"
+            cluster_file = os.path.join(phylodm_out_dir, f"{os.path.basename(output_basename)}_{cutoff:.2f}.3c.mcl")
+            temp_output_file = os.path.join(temp_clusters_dir, "temp", f"temp_output_clusters_{cutoff:.2f}.txt")
+            final_output_file = os.path.join(temp_clusters_dir, f"{os.path.basename(output_basename)}_{cutoff:.2f}.txt")
+
+            # Process MCL and add singletons
+            process_mcl_add_singletons(cluster_file, alignment_file, temp_output_file, taxonomy_dict, args.tax_level)
+
+            # Process clusters and sort by counts
+            process_clusters_sortby_counts(count_file, temp_output_file, final_output_file)
+
+            # Copy the final cluster file to the main clusters directory
             dst_file = os.path.join(clusters_dir, f"threshold_{cutoff:.2f}.txt")
-            if os.path.exists(src_file):
-                with open(src_file, 'r') as src, open(dst_file, 'w') as dst:
+            if os.path.exists(final_output_file):
+                with open(final_output_file, 'r') as src, open(dst_file, 'w') as dst:
                     dst.write(src.read())
 
-            # Copy any other files in the cluster directory (except temp directory)
-            for file in os.listdir(src_cluster_dir):
-                if file != "temp" and os.path.isfile(os.path.join(src_cluster_dir, file)):
-                    src_file = os.path.join(src_cluster_dir, file)
-                    dst_file = os.path.join(clusters_dir, file)
-                    with open(src_file, 'r') as src, open(dst_file, 'w') as dst:
-                        dst.write(src.read())
+    # If we're not in extract-only mode, we need to do some additional processing
+    if not extract_only_mode:
+        # Copy the final cluster files to the clusters directory
+        for cutoff in cutoffs:
+            # Copy phylodm output files
+            src_phylodm_dir = os.path.join(output_dir, f"threshold_{cutoff:.2f}_phylodm_out")
+            if os.path.exists(src_phylodm_dir):
+                for file in os.listdir(src_phylodm_dir):
+                    if os.path.isfile(os.path.join(src_phylodm_dir, file)):
+                        src_file = os.path.join(src_phylodm_dir, file)
+                        dst_file = os.path.join(phylodm_out_dir, file)
+                        with open(src_file, 'r') as src, open(dst_file, 'w') as dst:
+                            dst.write(src.read())
 
-        # Copy phylodm output files
-        src_phylodm_dir = os.path.join(output_dir, f"threshold_{cutoff:.2f}_phylodm_out")
-        if os.path.exists(src_phylodm_dir):
-            for file in os.listdir(src_phylodm_dir):
-                if os.path.isfile(os.path.join(src_phylodm_dir, file)):
-                    src_file = os.path.join(src_phylodm_dir, file)
-                    dst_file = os.path.join(phylodm_out_dir, file)
-                    with open(src_file, 'r') as src, open(dst_file, 'w') as dst:
-                        dst.write(src.read())
+        # Generate cluster statistics for each cutoff
+        all_stats = []
+        previous_cutoff = None
+        optimal_threshold = None
 
-    # Generate cluster statistics for each cutoff
-    all_stats = []
-    for cutoff in cutoffs:
-        cluster_dir = os.path.join(output_dir, f"threshold_{cutoff:.2f}_clusters")
-        output_basename = os.path.join(output_dir, f"threshold_{cutoff:.2f}")
-        stats = generate_cluster_stats(cluster_dir, output_basename)
-        if stats is not None:
-            all_stats.append(stats)
+        # Determine which column to check based on the taxonomy level
+        tax_col = None
+        if args.extract_tax_level is not None:
+            # Map taxonomy level to column name
+            tax_level_to_column = {
+                1: 'clustcons_species',  # Not currently used, but added for completeness
+                2: 'clustcons_genus',
+                3: 'clustcons_family',
+                4: 'clustcons_order',
+                5: 'clustcons_class',
+                6: 'clustcons_phylum'
+            }
 
-    # Create combined stats file
-    if all_stats:
-        combined_stats = pd.concat(all_stats)
-        combined_stats.sort_values(by='cutoff', ascending=False, inplace=True)
-        combined_stats.to_csv(os.path.join(output_dir, 'combined_stats.tsv'), sep='\t', index=False)
+            if args.extract_tax_level in tax_level_to_column:
+                tax_col = tax_level_to_column[args.extract_tax_level]
+            else:
+                print(f"Error: Invalid taxonomy level {args.extract_tax_level}. Must be between 1 and 6.")
+                sys.exit(1)
 
-    # Clean up temporary directories
-    import shutil
-    for cutoff in cutoffs:
-        # Remove threshold_*_clusters directories
-        cluster_dir = os.path.join(output_dir, f"threshold_{cutoff:.2f}_clusters")
-        if os.path.exists(cluster_dir):
-            shutil.rmtree(cluster_dir)
+        for cutoff in cutoffs:
+            cluster_dir = os.path.join(output_dir, f"threshold_{cutoff:.2f}_clusters")
+            output_basename = os.path.join(output_dir, f"threshold_{cutoff:.2f}")
+            stats = generate_cluster_stats(cluster_dir, output_basename, taxonomy_dict)
+            if stats is not None:
+                all_stats.append(stats)
 
-        # Remove threshold_*_phylodm_out directories
-        phylodm_dir = os.path.join(output_dir, f"threshold_{cutoff:.2f}_phylodm_out")
-        if os.path.exists(phylodm_dir):
-            shutil.rmtree(phylodm_dir)
+                # Check if we're in auto-threshold mode and should stop early
+                if 'auto_threshold_mode' in locals() and tax_col is not None:
+                    # Check if clusters are mixed at this threshold
+                    if stats[tax_col].iloc[0] != 'n/a':
+                        consistent, total = stats[tax_col].iloc[0].split('/')
+                        if consistent != total:  # Found mixed clusters
+                            print(f"Found mixed clusters at threshold {cutoff:.2f} ({consistent}/{total} consistent)")
+                            if previous_cutoff is not None:
+                                print(f"Stopping clustering. Optimal threshold is {previous_cutoff:.2f}")
+                                optimal_threshold = previous_cutoff
+                            else:
+                                print(f"No higher threshold with consistent clusters found.")
+                            break
 
-        # Remove threshold_*.clusterstats files
-        stats_file = os.path.join(output_dir, f"threshold_{cutoff:.2f}.clusterstats")
-        if os.path.exists(stats_file):
-            os.remove(stats_file)
+                    # Store this cutoff as the previous one for the next iteration
+                    previous_cutoff = cutoff
 
-    print(f"Clustering complete. Results are in {output_dir}/")
-    print(f"See {output_dir}/README.md for more information.")
+        # Create combined stats file
+        if all_stats:
+            combined_stats = pd.concat(all_stats)
+            combined_stats.sort_values(by='cutoff', ascending=False, inplace=True)
+            combined_stats.to_csv(os.path.join(output_dir, 'combined_stats.tsv'), sep='\t', index=False)
 
-    # Create a README.md file
-    create_readme(output_dir, tree_file, alignment_file, taxonomy_file, cutoffs, args.tax_level)
+        # Clean up temporary directories
+        import shutil
+        for cutoff in cutoffs:
+            # Remove threshold_*_clusters directories
+            cluster_dir = os.path.join(output_dir, f"threshold_{cutoff:.2f}_clusters")
+            if os.path.exists(cluster_dir):
+                shutil.rmtree(cluster_dir)
+
+            # Remove threshold_*_phylodm_out directories
+            phylodm_dir = os.path.join(output_dir, f"threshold_{cutoff:.2f}_phylodm_out")
+            if os.path.exists(phylodm_dir):
+                shutil.rmtree(phylodm_dir)
+
+            # Remove threshold_*.clusterstats files
+            stats_file = os.path.join(output_dir, f"threshold_{cutoff:.2f}.clusterstats")
+            if os.path.exists(stats_file):
+                os.remove(stats_file)
+
+        print(f"Clustering complete. Results are in {output_dir}/")
+        print(f"See {output_dir}/README.md for more information.")
+
+        # Create a README.md file
+        create_readme(output_dir, tree_file, alignment_file, taxonomy_file, cutoffs, args.tax_level)
 
     # Extract cluster representatives if requested
-    if args.extract is not None:
-        extract_threshold = args.extract
-        # Check if the threshold is in the list of cutoffs
-        if extract_threshold not in cutoffs:
-            print(f"Warning: Extraction threshold {extract_threshold} not in cutoffs list. Using closest value.")
-            # Find the closest cutoff
-            extract_threshold = min(cutoffs, key=lambda x: abs(x - extract_threshold))
-            print(f"Using threshold {extract_threshold} for extraction.")
+    if args.extract is not None or args.extract_tax_level is not None:
+        extract_threshold = None
+
+        # If extract_tax_level is specified, use the optimal threshold we found during clustering
+        if args.extract_tax_level is not None:
+            # If we already found the optimal threshold during clustering, use it
+            if 'optimal_threshold' in locals() and optimal_threshold is not None:
+                print(f"Using optimal threshold for taxonomy level {args.extract_tax_level}: {optimal_threshold}")
+            else:
+                # If we didn't find it during clustering (e.g., all thresholds were consistent),
+                # read from the combined_stats.tsv file
+                print(f"Finding optimal threshold for taxonomy level {args.extract_tax_level}...")
+
+                # Read the combined_stats.tsv file
+                stats_file = os.path.join(output_dir, "combined_stats.tsv")
+                if not os.path.exists(stats_file):
+                    print(f"Error: Stats file {stats_file} not found")
+                    sys.exit(1)
+
+                stats_df = pd.read_csv(stats_file, sep='\t')
+
+                # Find the highest threshold where all clusters are consistent at the specified level
+                optimal_threshold = None
+
+                # Map taxonomy level to column name
+                tax_level_to_column = {
+                    1: 'clustcons_species',  # Not currently used, but added for completeness
+                    2: 'clustcons_genus',
+                    3: 'clustcons_family',
+                    4: 'clustcons_order',
+                    5: 'clustcons_class',
+                    6: 'clustcons_phylum'
+                }
+
+                if args.extract_tax_level in tax_level_to_column:
+                    tax_col = tax_level_to_column[args.extract_tax_level]
+                else:
+                    print(f"Error: Invalid taxonomy level {args.extract_tax_level}. Must be between 1 and 6.")
+                    sys.exit(1)
+
+                # Check each threshold from lowest to highest
+                # We want to find the lowest threshold where all clusters are still consistent
+                for _, row in stats_df.sort_values(by='cutoff', ascending=True).iterrows():
+                    if row[tax_col] != 'n/a':
+                        consistent, total = row[tax_col].split('/')
+                        if consistent != total:  # Found inconsistent clusters
+                            # Go one threshold up (previous iteration had consistent clusters)
+                            break
+                        optimal_threshold = row['cutoff']
+
+                if optimal_threshold is None:
+                    print("Warning: No threshold found where all clusters are consistent. Using the lowest threshold.")
+                    optimal_threshold = stats_df['cutoff'].min()
+
+                print(f"Optimal threshold for taxonomy level {args.extract_tax_level}: {optimal_threshold}")
+
+            # Update the summary file with this information
+            summary_file = os.path.join(output_dir, "summary.md")
+            if os.path.exists(summary_file):
+                with open(summary_file, 'a') as f:
+                    f.write(f"\n## Automatic Threshold Detection\n\n")
+                    f.write(f"- **Taxonomy level**: {args.extract_tax_level}\n")
+                    f.write(f"- **Optimal threshold**: {optimal_threshold}\n")
+
+                    # Add a description of the taxonomy level
+                    tax_level_descriptions = {
+                        1: "species",
+                        2: "genus",
+                        3: "family",
+                        4: "order",
+                        5: "class",
+                        6: "phylum"
+                    }
+
+                    tax_level_name = ""
+                    if args.extract_tax_level in tax_level_descriptions:
+                        tax_level_name = tax_level_descriptions[args.extract_tax_level]
+                        f.write(f"- **Taxonomy level {args.extract_tax_level} corresponds to**: {tax_level_name}\n")
+
+                    # Add explanation of threshold selection
+                    f.write("\n### Threshold Selection Rationale\n\n")
+                    f.write("The optimal threshold is the highest value where all clusters are taxonomically consistent.\n")
+                    f.write("Below this threshold, clusters start to contain sequences from different taxonomic groups.\n\n")
+
+                    # Add a table showing consistency at different thresholds
+                    if tax_level_name:
+                        f.write(f"### Consistency at {tax_level_name} level:\n\n")
+                    else:
+                        f.write(f"### Consistency at taxonomy level {args.extract_tax_level}:\n\n")
+                    f.write("| Threshold | Consistency |\n")
+                    f.write("|:---------:|:----------:|\n")
+
+                    # Read the combined_stats.tsv file to get consistency information
+                    stats_file = os.path.join(output_dir, "combined_stats.tsv")
+                    if os.path.exists(stats_file):
+                        stats_df = pd.read_csv(stats_file, sep='\t')
+
+                        # Map taxonomy level to column name
+                        tax_level_to_column = {
+                            1: 'clustcons_species',  # Not currently used, but added for completeness
+                            2: 'clustcons_genus',
+                            3: 'clustcons_family',
+                            4: 'clustcons_order',
+                            5: 'clustcons_class',
+                            6: 'clustcons_phylum'
+                        }
+
+                        # Get the appropriate column for the taxonomy level
+                        if args.extract_tax_level in tax_level_to_column:
+                            tax_col = tax_level_to_column[args.extract_tax_level]
+                        else:
+                            tax_col = 'clustcons_genus'  # Default to genus if invalid
+
+                        # Write the consistency for each threshold
+                        for _, row in stats_df.sort_values(by='cutoff', ascending=False).iterrows():
+                            if row[tax_col] != 'n/a':
+                                f.write(f"| {row['cutoff']:.2f} | {row[tax_col]} |\n")
+
+            extract_threshold = optimal_threshold
+        else:
+            extract_threshold = args.extract
+
+            # If we're in extract-only mode, we already verified the cluster file exists
+            if not extract_only_mode:
+                # Check if the threshold is in the list of cutoffs
+                if extract_threshold not in cutoffs:
+                    print(f"Warning: Extraction threshold {extract_threshold} not in cutoffs list. Using closest value.")
+                    # Find the closest cutoff
+                    extract_threshold = min(cutoffs, key=lambda x: abs(x - extract_threshold))
+                    print(f"Using threshold {extract_threshold} for extraction.")
 
         # Get the cluster file for the specified threshold
         cluster_file = os.path.join(clusters_dir, f"threshold_{extract_threshold:.2f}.txt")
@@ -517,8 +814,8 @@ def main():
         # Create the output file name
         # Get the basename of the alignment file without extension
         aln_basename = os.path.splitext(os.path.basename(alignment_file))[0]
-        # Remove decimal point from threshold
-        threshold_str = f"{int(extract_threshold * 100):02d}"
+        # Format threshold with pdm prefix (e.g., 0.7 becomes pdm07)
+        threshold_str = f"pdm{int(extract_threshold * 100):02d}"
         # Get the file extension
         file_ext = os.path.splitext(alignment_file)[1]
 
@@ -527,11 +824,19 @@ def main():
 
         # Extract the representatives
         extract_cluster_representatives(cluster_file, alignment_file, output_file)
-        print(f"Extracted cluster representatives for threshold {extract_threshold} to {output_file}")
+
+        if extract_only_mode:
+            print(f"Extract-only mode: Extracted cluster representatives for threshold {extract_threshold} to {output_file}")
+        else:
+            print(f"Extracted cluster representatives for threshold {extract_threshold} to {output_file}")
 
 
 def extract_cluster_representatives(clusters_file, alignment_file, output_file):
     """Extract the first sequence (representative) from each cluster and write to a new FASTA file.
+
+    This function extracts:
+    1. The first sequence from each cluster (representative)
+    2. All singletons (clusters with only one sequence)
 
     Args:
         clusters_file: Path to the clusters file
@@ -548,6 +853,9 @@ def extract_cluster_representatives(clusters_file, alignment_file, output_file):
     # Get the first sequence ID from each cluster (the representative)
     representatives = [cluster[0] for cluster in clusters if cluster]
 
+    # Count singletons for reporting
+    singleton_count = sum(1 for cluster in clusters if len(cluster) == 1)
+
     # Read all sequences from the alignment file
     sequences = {}
     for record in SeqIO.parse(alignment_file, "fasta"):
@@ -555,15 +863,50 @@ def extract_cluster_representatives(clusters_file, alignment_file, output_file):
         sequences[seq_id] = record
 
     # Write representatives to the output file
+    sequences_written = 0
     with open(output_file, 'w') as f:
         for rep_id in representatives:
             if rep_id in sequences:
                 f.write(f">{sequences[rep_id].description}\n")
                 f.write(f"{str(sequences[rep_id].seq)}\n")
+                sequences_written += 1
             else:
                 print(f"Warning: Representative {rep_id} not found in alignment file")
 
-    print(f"Extracted {len(representatives)} cluster representatives to {output_file}")
+    print(f"Extracted {sequences_written} sequences to {output_file} ({len(representatives)} cluster representatives, including {singleton_count} singletons)")
+
+
+def create_log_file(output_dir, tree_file, alignment_file, taxonomy_file, taxonomy_dict, alignment_seqs):
+    """Create a summary markdown file with information about the clustering process."""
+    log_file = os.path.join(output_dir, "summary.md")
+
+    with open(log_file, 'w') as f:
+        f.write("# PhyloDM Clustering Pipeline Summary\n\n")
+
+        # Input files
+        f.write("## Input Files\n\n")
+        f.write(f"- **Tree file**: {os.path.basename(tree_file)}\n")
+        f.write(f"- **Alignment file**: {os.path.basename(alignment_file)}\n")
+        if taxonomy_file:
+            f.write(f"- **Taxonomy file**: {os.path.basename(taxonomy_file)}\n")
+        f.write("\n")
+
+        # Taxonomy coverage
+        if taxonomy_dict:
+            total_seqs = len(alignment_seqs)
+            seqs_with_tax = sum(1 for seq in alignment_seqs if seq in taxonomy_dict)
+            coverage_percent = (seqs_with_tax / total_seqs) * 100 if total_seqs > 0 else 0
+
+            f.write("## Taxonomy Coverage\n\n")
+            f.write(f"- **Total sequences in alignment**: {total_seqs}\n")
+            f.write(f"- **Sequences with taxonomy information**: {seqs_with_tax}\n")
+            f.write(f"- **Coverage**: {seqs_with_tax}/{total_seqs} ({coverage_percent:.2f}%)\n\n")
+
+        # Timestamp
+        import datetime
+        f.write(f"*Summary created: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}*\n")
+
+    print(f"Summary file created: {log_file}")
 
 
 def create_readme(output_dir, tree_file, alignment_file, taxonomy_file, cutoffs, tax_level):
@@ -629,11 +972,28 @@ def create_readme(output_dir, tree_file, alignment_file, taxonomy_file, cutoffs,
         f.write("\n")
 
         f.write("## Clustering Statistics\n\n")
+
+        # Check if taxonomy consistency columns exist
+        has_taxonomy_stats = 'clustcons_genus' in stats_df.columns
+
+        if has_taxonomy_stats:
+            f.write("### Basic Statistics\n\n")
+
         f.write("| Threshold | Number of Clusters | Number of Singletons | Average Cluster Size | Largest Cluster Size |\n")
         f.write("|:---------:|:-----------------:|:-------------------:|:-------------------:|:-------------------:|\n")
 
         for _, row in stats_df.iterrows():
             f.write(f"| **{row['cutoff']:.2f}** | {row['num_clusters']} | {row['num_singletons']} | {row['avg_size']:.2f} | {row['largest_cluster']} |\n")
+
+        # Add taxonomy consistency statistics if available
+        if has_taxonomy_stats:
+            f.write("\n### Taxonomy Consistency\n\n")
+            f.write("Number of clusters that are taxonomically consistent at different levels (consistent/total):\n\n")
+            f.write("| Threshold | Genus | Family | Order | Class | Phylum |\n")
+            f.write("|:---------:|:-----:|:------:|:-----:|:-----:|:------:|\n")
+
+            for _, row in stats_df.iterrows():
+                f.write(f"| **{row['cutoff']:.2f}** | {row['clustcons_genus']} | {row['clustcons_family']} | {row['clustcons_order']} | {row['clustcons_class']} | {row['clustcons_phylum']} |\n")
 
         f.write("\n")
 

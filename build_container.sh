@@ -71,6 +71,12 @@ if [ "$BUILD_SUCCESS" = true ]; then
     echo "Extract Cluster Representatives:"
     echo "$CONTAINER_CMD run --bind /path/to/input:/input --bind /path/to/output:/output phylodm-clustering.sif --input_dir /input --output_dir /output --extract 0.7"
     echo ""
+    echo "Extract-Only Mode (only extracts representatives without redoing clustering if output exists):"
+    echo "$CONTAINER_CMD run --bind /path/to/input:/input --bind /path/to/output:/output phylodm-clustering.sif --input_dir /input --output_dir /output --extract 0.7 --extract_only"
+    echo ""
+    echo "Extract Representatives at Optimal Taxonomy Level:"
+    echo "$CONTAINER_CMD run --bind /path/to/input:/input --bind /path/to/output:/output phylodm-clustering.sif --input_dir /input --output_dir /output --extract_tax_level 2  # Genus level"
+    echo ""
     echo "For more information, run:"
     echo "$CONTAINER_CMD run-help phylodm-clustering.sif"
 else

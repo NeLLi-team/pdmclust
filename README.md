@@ -150,7 +150,7 @@ pixi run run-test-custom-cutoffs-99-95-90
 For more advanced usage, you can run the Python script directly with additional parameters:
 
 ```bash
-python phylodm_clustering.py --input_dir /path/to/input --output_dir /path/to/output --tree /path/to/tree.nwk --alignment /path/to/alignment.faa --taxonomy /path/to/taxonomy.tsv --tax_level 3 --cutoffs 0.99,0.95,0.9,0.85,0.8,0.75,0.7
+python phylodm_clustering.py --input_dir /path/to/input --output_dir /path/to/output --tree /path/to/tree.nwk --seqfile /path/to/alignment.faa --taxonomy /path/to/taxonomy.tsv --tax_level 3 --cutoffs 0.99,0.95,0.9,0.85,0.8,0.75,0.7
 ```
 
 ### 🔬 Extracting Cluster Representatives
@@ -163,9 +163,36 @@ python phylodm_clustering.py --input_dir test --extract 0.7
 
 # Run clustering and extract representatives in one command
 python phylodm_clustering.py --input_dir test --cutoffs 0.99,0.95,0.9,0.8,0.7 --extract 0.7
+
+# Extract-only mode (only extracts representatives without redoing clustering if output exists)
+python phylodm_clustering.py --input_dir test --extract 0.7 --extract_only
+
+# Extract representatives at the highest threshold where all clusters are consistent at a specific taxonomy level
+python phylodm_clustering.py --input_dir test --extract_tax_level 2  # Genus level
+python phylodm_clustering.py --input_dir test --extract_tax_level 3  # Family level
+python phylodm_clustering.py --input_dir test --extract_tax_level 4  # Order level
+python phylodm_clustering.py --input_dir test --extract_tax_level 5  # Class level
+python phylodm_clustering.py --input_dir test --extract_tax_level 6  # Phylum level
+
+# You can also use string names for taxonomy levels
+python phylodm_clustering.py --input_dir test --extract_tax_level genus
+python phylodm_clustering.py --input_dir test --extract_tax_level family
+python phylodm_clustering.py --input_dir test --extract_tax_level order
+python phylodm_clustering.py --input_dir test --extract_tax_level class
+python phylodm_clustering.py --input_dir test --extract_tax_level phylum
+
+# You can specify a particular sequence file to use
+python phylodm_clustering.py --input_dir test --seqfile test/alignment.faa --extract_tax_level family
+
+# You can specify all input files explicitly
+python phylodm_clustering.py --input_dir test --tree test/tree.nwk --seqfile test/alignment.faa --taxonomy test/taxonomy.tsv --extract_tax_level family
 ```
 
-This will create a new FASTA file with the cluster representatives. The output file will be named based on the input alignment file with the threshold appended (e.g., `pimascovirales_faa--GVOG7-fasttree-perc3_07.mafft_t`).
+The extract-only mode is useful when you've already run clustering and just want to extract representatives without redoing the clustering. If the output directory doesn't exist yet, it will run clustering only at the specified threshold.
+
+The `--extract_tax_level` option automatically runs clustering at a range of thresholds (from 0.9 down to 0.01) and finds the highest threshold where all clusters are consistent at the specified taxonomy level. This is useful for finding the optimal threshold for a specific taxonomy level.
+
+The output file will be named based on the input alignment file with the threshold appended (e.g., `pimascovirales_faa--GVOG7-fasttree-perc3_pdm07.mafft_t`). The threshold is formatted with a "pdm" prefix followed by the threshold value without the decimal point.
 
 ### 🔧 Customizing Pixi Tasks
 
@@ -270,6 +297,7 @@ This project is licensed under the MIT License.
 ## 👥 Contributors
 
 - NeLLi Team
+- Frederik Schulz (fschulz@lbl.gov)
 
 ## 📞 Contact
 

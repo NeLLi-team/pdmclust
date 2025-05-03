@@ -59,6 +59,12 @@ EOF
     Extract Cluster Representatives:
         apptainer run phylodm-clustering.sif --input_dir /path/to/input --output_dir /path/to/output --extract 0.7
 
+    Extract-Only Mode (only extracts representatives without redoing clustering if output exists):
+        apptainer run phylodm-clustering.sif --input_dir /path/to/input --output_dir /path/to/output --extract 0.7 --extract_only
+
+    Extract Representatives at Optimal Taxonomy Level:
+        apptainer run phylodm-clustering.sif --input_dir /path/to/input --output_dir /path/to/output --extract_tax_level 2  # Genus level
+
     Advanced Usage:
         apptainer run phylodm-clustering.sif --input_dir /path/to/input --output_dir /path/to/output \
           --tree /path/to/tree.nwk --alignment /path/to/alignment.faa --taxonomy /path/to/taxonomy.tsv \

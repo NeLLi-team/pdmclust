@@ -43,8 +43,42 @@ run-test-extract-09 = "python phylodm_clustering.py --input_dir test --extract 0
 run-test-extract-095 = "python phylodm_clustering.py --input_dir test --extract 0.95"
 run-test-extract-099 = "python phylodm_clustering.py --input_dir test --extract 0.99"
 
+# Extract-only mode (only extracts representatives without redoing clustering if output exists)
+run-test-extract-only-07 = "python phylodm_clustering.py --input_dir test --extract 0.7 --extract_only"
+run-test-extract-only-08 = "python phylodm_clustering.py --input_dir test --extract 0.8 --extract_only"
+run-test-extract-only-09 = "python phylodm_clustering.py --input_dir test --extract 0.9 --extract_only"
+run-test-extract-only-095 = "python phylodm_clustering.py --input_dir test --extract 0.95 --extract_only"
+run-test-extract-only-099 = "python phylodm_clustering.py --input_dir test --extract 0.99 --extract_only"
+
 # Run clustering and extract representatives in one command
 run-test-with-extract-07 = "python phylodm_clustering.py --input_dir test --cutoffs 0.99,0.95,0.9,0.8,0.7 --extract 0.7"
+
+# Extract representatives at the highest threshold where all clusters are consistent at a specific taxonomy level
+run-test-extract-tax-genus = "python phylodm_clustering.py --input_dir test --extract_tax_level 2"
+run-test-extract-tax-family = "python phylodm_clustering.py --input_dir test --extract_tax_level 3"
+run-test-extract-tax-order = "python phylodm_clustering.py --input_dir test --extract_tax_level 4"
+run-test-extract-tax-class = "python phylodm_clustering.py --input_dir test --extract_tax_level 5"
+run-test-extract-tax-phylum = "python phylodm_clustering.py --input_dir test --extract_tax_level 6"
+
+# Same as above but using string names for taxonomy levels
+run-test-extract-tax-genus-str = "python phylodm_clustering.py --input_dir test --extract_tax_level genus"
+run-test-extract-tax-family-str = "python phylodm_clustering.py --input_dir test --extract_tax_level family"
+run-test-extract-tax-order-str = "python phylodm_clustering.py --input_dir test --extract_tax_level order"
+run-test-extract-tax-class-str = "python phylodm_clustering.py --input_dir test --extract_tax_level class"
+run-test-extract-tax-phylum-str = "python phylodm_clustering.py --input_dir test --extract_tax_level phylum"
+
+# Extract representatives with specific sequence file
+run-test-extract-tax-family-seqfile = "python phylodm_clustering.py --input_dir test --seqfile test/pimascovirales_faa--GVOG7-fasttree-perc3.mafft_t --extract_tax_level family"
+run-test-extract-tax-genus-seqfile = "python phylodm_clustering.py --input_dir test --seqfile test/pimascovirales_faa--GVOG7-fasttree-perc3.mafft_t --extract_tax_level genus"
+
+# Extract representatives with specific tree file
+run-test-extract-tax-family-tree = "python phylodm_clustering.py --input_dir test --tree test/pimascovirales_faa--GVOG7-fasttree-perc3.contree --extract_tax_level family"
+
+# Extract representatives with specific taxonomy file
+run-test-extract-tax-family-taxonomy = "python phylodm_clustering.py --input_dir test --taxonomy test/ncldvFeb25_labels.tsv --extract_tax_level family"
+
+# Extract representatives with all specific files
+run-test-extract-tax-family-all = "python phylodm_clustering.py --input_dir test --tree test/pimascovirales_faa--GVOG7-fasttree-perc3.contree --seqfile test/pimascovirales_faa--GVOG7-fasttree-perc3.mafft_t --taxonomy test/ncldvFeb25_labels.tsv --extract_tax_level family"
 
 # Add more custom tasks as needed for your specific directories
 # run-dir-your-directory = "python phylodm_clustering.py --input_dir your_directory"
