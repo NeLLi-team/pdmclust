@@ -12,20 +12,42 @@ numpy = "*"
 dendropy = "*"
 phylodm = "*"
 mcl = "*"
+biopython = "*"
 pip = "*"
 
 [tasks]
 # Install additional dependencies that might not be available in conda
 install-deps = "pip install dendropy phylodm"
 
-# Run the clustering pipeline with default parameters
-run = "python phylodm_clustering.py --input_dir {args}"
+# Run the clustering pipeline with default parameters (no arguments needed)
+run-test = "python phylodm_clustering.py --input_dir test"
 
-# Run the clustering pipeline with taxonomy-based clustering
-run-with-taxonomy = "python phylodm_clustering.py --input_dir {args} --tax_level 2"
+# Run the clustering pipeline with taxonomy-based clustering on test data
+run-test-with-taxonomy = "python phylodm_clustering.py --input_dir test --tax_level 2"
 
-# Run the clustering pipeline with custom cutoffs
-run-custom-cutoffs = "python phylodm_clustering.py --input_dir {args} --cutoffs {args}"
+# Run the clustering pipeline with custom cutoffs on test data (0.95,0.9,0.85)
+run-test-custom-cutoffs-95-90-85 = "python phylodm_clustering.py --input_dir test --cutoffs 0.95,0.9,0.85"
+
+# Run the clustering pipeline with custom cutoffs on test data (0.99,0.95,0.9)
+run-test-custom-cutoffs-99-95-90 = "python phylodm_clustering.py --input_dir test --cutoffs 0.99,0.95,0.9"
+
+# Create a custom task for each common use case
+# For example, to run with a specific input directory:
+run-dir-test = "python phylodm_clustering.py --input_dir test"
+run-dir-test-results = "python phylodm_clustering.py --input_dir test_results"
+
+# Extract cluster representatives at different thresholds
+run-test-extract-07 = "python phylodm_clustering.py --input_dir test --extract 0.7"
+run-test-extract-08 = "python phylodm_clustering.py --input_dir test --extract 0.8"
+run-test-extract-09 = "python phylodm_clustering.py --input_dir test --extract 0.9"
+run-test-extract-095 = "python phylodm_clustering.py --input_dir test --extract 0.95"
+run-test-extract-099 = "python phylodm_clustering.py --input_dir test --extract 0.99"
+
+# Run clustering and extract representatives in one command
+run-test-with-extract-07 = "python phylodm_clustering.py --input_dir test --cutoffs 0.99,0.95,0.9,0.8,0.7 --extract 0.7"
+
+# Add more custom tasks as needed for your specific directories
+# run-dir-your-directory = "python phylodm_clustering.py --input_dir your_directory"
 
 # Run tests
 test = "pytest"

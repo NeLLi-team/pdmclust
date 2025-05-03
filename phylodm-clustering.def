@@ -47,7 +47,21 @@ EOF
     This container provides a pipeline for clustering sequences based on phylogenetic distances,
     with optional taxonomy-based consistency checks.
 
-    Usage:
+    Basic Usage:
         apptainer run phylodm-clustering.sif --input_dir /path/to/input --output_dir /path/to/output
+
+    With Taxonomy-Based Clustering:
+        apptainer run phylodm-clustering.sif --input_dir /path/to/input --output_dir /path/to/output --tax_level 2
+
+    With Custom Cutoffs:
+        apptainer run phylodm-clustering.sif --input_dir /path/to/input --output_dir /path/to/output --cutoffs 0.95,0.9,0.85
+
+    Extract Cluster Representatives:
+        apptainer run phylodm-clustering.sif --input_dir /path/to/input --output_dir /path/to/output --extract 0.7
+
+    Advanced Usage:
+        apptainer run phylodm-clustering.sif --input_dir /path/to/input --output_dir /path/to/output \
+          --tree /path/to/tree.nwk --alignment /path/to/alignment.faa --taxonomy /path/to/taxonomy.tsv \
+          --tax_level 3 --cutoffs 0.99,0.95,0.9,0.85,0.8,0.75,0.7 --extract 0.7
 
     For more information, see the README.md file in the GitHub repository.

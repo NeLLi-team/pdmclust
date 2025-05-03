@@ -116,10 +116,10 @@ This approach ensures that the pipeline works reliably inside the container whil
 
 ## 🚀 Usage
 
-### 🔰 Basic Usage
+### 🔰 Basic Usage with Python
 
 ```bash
-pixi run -- --input_dir /path/to/input
+python phylodm_clustering.py --input_dir test
 ```
 
 This will:
@@ -127,26 +127,59 @@ This will:
 2. Perform clustering at thresholds 0.99, 0.95, 0.9, 0.8, 0.7
 3. Create a results directory with the clustering results
 
-### 🔬 With Taxonomy-Based Clustering
+### 🔰 Basic Usage with Pixi
+
+We've created several predefined tasks in the pixi.toml file for common use cases:
 
 ```bash
-pixi run-with-taxonomy -- /path/to/input
+# Run with test data (no arguments needed)
+pixi run run-test
+
+# Run with taxonomy-based clustering on test data
+pixi run run-test-with-taxonomy
+
+# Run with custom cutoffs (0.95, 0.9, 0.85) on test data
+pixi run run-test-custom-cutoffs-95-90-85
+
+# Run with custom cutoffs (0.99, 0.95, 0.9) on test data
+pixi run run-test-custom-cutoffs-99-95-90
 ```
-
-This will perform clustering with taxonomy consistency checks at the genus level (level 2).
-
-### 🎛️ With Custom Cutoffs
-
-```bash
-pixi run-custom-cutoffs -- /path/to/input 0.95,0.9,0.85,0.8
-```
-
-This will perform clustering at the specified cutoffs.
 
 ### 🧪 Advanced Usage
 
+For more advanced usage, you can run the Python script directly with additional parameters:
+
 ```bash
-pixi run -- --input_dir /path/to/input --output_dir /path/to/output --tree /path/to/tree.nwk --alignment /path/to/alignment.faa --taxonomy /path/to/taxonomy.tsv --tax_level 3 --cutoffs 0.99,0.95,0.9,0.85,0.8,0.75,0.7
+python phylodm_clustering.py --input_dir /path/to/input --output_dir /path/to/output --tree /path/to/tree.nwk --alignment /path/to/alignment.faa --taxonomy /path/to/taxonomy.tsv --tax_level 3 --cutoffs 0.99,0.95,0.9,0.85,0.8,0.75,0.7
+```
+
+### 🔬 Extracting Cluster Representatives
+
+You can extract cluster representatives (the first sequence from each cluster) at a specific threshold:
+
+```bash
+# Extract representatives at threshold 0.7
+python phylodm_clustering.py --input_dir test --extract 0.7
+
+# Run clustering and extract representatives in one command
+python phylodm_clustering.py --input_dir test --cutoffs 0.99,0.95,0.9,0.8,0.7 --extract 0.7
+```
+
+This will create a new FASTA file with the cluster representatives. The output file will be named based on the input alignment file with the threshold appended (e.g., `pimascovirales_faa--GVOG7-fasttree-perc3_07.mafft_t`).
+
+### 🔧 Customizing Pixi Tasks
+
+If you need to add more custom tasks, you can edit the pixi.toml file to add your own tasks:
+
+```toml
+# Example of adding a custom task for a specific directory
+run-dir-your-directory = "python phylodm_clustering.py --input_dir your_directory"
+
+# Example of adding a custom task with specific parameters
+run-custom-task = "python phylodm_clustering.py --input_dir your_directory --cutoffs 0.95,0.9 --tax_level 3"
+
+# Example of adding a custom task for extraction
+run-extract-custom = "python phylodm_clustering.py --input_dir your_directory --extract 0.7"
 ```
 
 ## 📁 Input Files

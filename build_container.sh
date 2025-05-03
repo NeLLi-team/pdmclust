@@ -58,7 +58,21 @@ fi
 if [ "$BUILD_SUCCESS" = true ]; then
     echo "Container built successfully: phylodm-clustering.sif"
     echo "To run the container:"
+    echo ""
+    echo "Basic Usage:"
     echo "$CONTAINER_CMD run --bind /path/to/input:/input --bind /path/to/output:/output phylodm-clustering.sif --input_dir /input --output_dir /output"
+    echo ""
+    echo "With Taxonomy-Based Clustering:"
+    echo "$CONTAINER_CMD run --bind /path/to/input:/input --bind /path/to/output:/output phylodm-clustering.sif --input_dir /input --output_dir /output --tax_level 2"
+    echo ""
+    echo "With Custom Cutoffs:"
+    echo "$CONTAINER_CMD run --bind /path/to/input:/input --bind /path/to/output:/output phylodm-clustering.sif --input_dir /input --output_dir /output --cutoffs 0.95,0.9,0.85"
+    echo ""
+    echo "Extract Cluster Representatives:"
+    echo "$CONTAINER_CMD run --bind /path/to/input:/input --bind /path/to/output:/output phylodm-clustering.sif --input_dir /input --output_dir /output --extract 0.7"
+    echo ""
+    echo "For more information, run:"
+    echo "$CONTAINER_CMD run-help phylodm-clustering.sif"
 else
     echo "Error building container"
     exit 1

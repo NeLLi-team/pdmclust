@@ -16,6 +16,7 @@ from phylodm import PhyloDM
 import multiprocessing
 import glob
 import re
+from Bio import SeqIO
 
 
 def create_dir(directory):
@@ -323,6 +324,7 @@ def main():
     parser.add_argument('--count', type=str, help='Count file (if not specified, will create a default count file)')
     parser.add_argument('--cutoffs', type=str, default='0.99,0.95,0.9,0.8,0.7', help='Comma-separated list of cutoff values (default: 0.99,0.95,0.9,0.8,0.7)')
     parser.add_argument('--tax_level', type=int, default=2, help='Taxonomy level for consistency check (1=species, 2=genus, 3=family, etc., 0=disable, default: 2)')
+    parser.add_argument('--extract', type=float, help='Extract cluster representatives at the specified threshold (e.g., 0.7)')
 
     args = parser.parse_args()
 
@@ -494,6 +496,74 @@ def main():
 
     # Create a README.md file
     create_readme(output_dir, tree_file, alignment_file, taxonomy_file, cutoffs, args.tax_level)
+
+    # Extract cluster representatives if requested
+    if args.extract is not None:
+        extract_threshold = args.extract
+        # Check if the threshold is in the list of cutoffs
+        if extract_threshold not in cutoffs:
+            print(f"Warning: Extraction threshold {extract_threshold} not in cutoffs list. Using closest value.")
+            # Find the closest cutoff
+            extract_threshold = min(cutoffs, key=lambda x: abs(x - extract_threshold))
+            print(f"Using threshold {extract_threshold} for extraction.")
+
+        # Get the cluster file for the specified threshold
+        cluster_file = os.path.join(clusters_dir, f"threshold_{extract_threshold:.2f}.txt")
+
+        if not os.path.exists(cluster_file):
+            print(f"Error: Cluster file for threshold {extract_threshold} not found: {cluster_file}")
+            sys.exit(1)
+
+        # Create the output file name
+        # Get the basename of the alignment file without extension
+        aln_basename = os.path.splitext(os.path.basename(alignment_file))[0]
+        # Remove decimal point from threshold
+        threshold_str = f"{int(extract_threshold * 100):02d}"
+        # Get the file extension
+        file_ext = os.path.splitext(alignment_file)[1]
+
+        # Create the output file name
+        output_file = os.path.join(output_dir, f"{aln_basename}_{threshold_str}{file_ext}")
+
+        # Extract the representatives
+        extract_cluster_representatives(cluster_file, alignment_file, output_file)
+        print(f"Extracted cluster representatives for threshold {extract_threshold} to {output_file}")
+
+
+def extract_cluster_representatives(clusters_file, alignment_file, output_file):
+    """Extract the first sequence (representative) from each cluster and write to a new FASTA file.
+
+    Args:
+        clusters_file: Path to the clusters file
+        alignment_file: Path to the alignment file in FASTA format
+        output_file: Path to the output FASTA file
+    """
+    # Read clusters
+    clusters = []
+    with open(clusters_file, 'r') as f:
+        for line in f:
+            if line.strip():
+                clusters.append(line.strip().split('\t'))
+
+    # Get the first sequence ID from each cluster (the representative)
+    representatives = [cluster[0] for cluster in clusters if cluster]
+
+    # Read all sequences from the alignment file
+    sequences = {}
+    for record in SeqIO.parse(alignment_file, "fasta"):
+        seq_id = record.id.split()[0]  # Get the sequence ID without description
+        sequences[seq_id] = record
+
+    # Write representatives to the output file
+    with open(output_file, 'w') as f:
+        for rep_id in representatives:
+            if rep_id in sequences:
+                f.write(f">{sequences[rep_id].description}\n")
+                f.write(f"{str(sequences[rep_id].seq)}\n")
+            else:
+                print(f"Warning: Representative {rep_id} not found in alignment file")
+
+    print(f"Extracted {len(representatives)} cluster representatives to {output_file}")
 
 
 def create_readme(output_dir, tree_file, alignment_file, taxonomy_file, cutoffs, tax_level):
